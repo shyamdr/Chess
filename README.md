@@ -1,5 +1,9 @@
 # Chess
 
+## Demonstration
+
+https://github.com/user-attachments/assets/84103de9-5a55-41f6-8db8-69a17702313a
+
 ## Overview
 This project is a creative attempt to build a user-friendly interface for a fun and engaging game of Chess. The color palettes and animations draw inspiration from popular chess platforms like lichess.org and chess.com. In addition to player-versus-player functionality, the game includes an inbuilt AI opponent with an approximate strength of 1200 ELO, offering an enjoyable challenge for casual players.
 
