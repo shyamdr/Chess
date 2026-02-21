@@ -37,7 +37,7 @@ class GameState():
                                              self.currentCastlingRights.bks, self.currentCastlingRights.bqs)]
     
         
-    def makeMove(self, move: Move) -> None:
+    def makeMove(self, move: Move, promotionChoice: str = 'Q') -> None:
         """Makes the move that is passed as a parameter."""
         self.board[move.startRow][move.startCol] = "--"
         self.board[move.endRow][move.endCol] = move.pieceMoved
@@ -60,8 +60,7 @@ class GameState():
             
         # Pawn promotion.
         if move.isPawnPromotionMove:
-            #promotedPiece = input("Promote to Q,R,B or N:")
-            self.board[move.endRow][move.endCol] = move.pieceMoved[0] + "Q"
+            self.board[move.endRow][move.endCol] = move.pieceMoved[0] + promotionChoice
             
         #Castling
         if move.isCastleMove:
@@ -198,6 +197,35 @@ class GameState():
                 self.checkmate = True
             else:
                 self.stalemate = True
+        elif self.isInsufficientMaterial():
+            self.stalemate = True
+    
+    def isInsufficientMaterial(self) -> bool:
+        """Check if neither side has enough material to checkmate."""
+        pieces = []
+        for row in self.board:
+            for square in row:
+                if square != "--" and square[1] != 'K':
+                    pieces.append(square)
+        # K vs K
+        if len(pieces) == 0:
+            return True
+        # K+minor vs K (bishop or knight)
+        if len(pieces) == 1 and pieces[0][1] in ('B', 'N'):
+            return True
+        # K+B vs K+B with bishops on same color
+        if len(pieces) == 2 and pieces[0][1] == 'B' and pieces[1][1] == 'B':
+            if pieces[0][0] != pieces[1][0]:  # Different sides
+                # Find bishop square colors
+                bishopSquares = []
+                for r in range(8):
+                    for c in range(8):
+                        sq = self.board[r][c]
+                        if sq[1] == 'B':
+                            bishopSquares.append((r + c) % 2)
+                if len(bishopSquares) == 2 and bishopSquares[0] == bishopSquares[1]:
+                    return True
+        return False
     
         return moves
     

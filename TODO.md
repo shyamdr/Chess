@@ -18,8 +18,8 @@
 ## Remaining — Ordered by Difficulty
 
 ### Easy
-- [ ] Pawn promotion UI — let player choose Q/R/B/N instead of auto-queen
-- [ ] Draw by insufficient material (K vs K, K+B vs K, K+N vs K)
+- [x] Pawn promotion UI — let player choose Q/R/B/N instead of auto-queen
+- [x] Draw by insufficient material (K vs K, K+B vs K, K+N vs K)
 
 ### Medium
 - [ ] Threefold repetition detection — track position history, declare draw

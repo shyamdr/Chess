@@ -54,6 +54,12 @@ MOVE_LOG_FONT_SIZE = 18
 ENDGAME_FONT_NAME = "Helvetica"
 ENDGAME_FONT_SIZE = 40
 
+# Promotion UI
+PROMOTION_PIECES = ['Q', 'R', 'B', 'N']
+PROMOTION_PANEL_COLOR = (50, 50, 50)
+PROMOTION_HIGHLIGHT_COLOR = (100, 100, 100)
+PROMOTION_BORDER_COLOR = (200, 200, 200)
+
 # Move log layout
 MOVES_PER_ROW = 2
 MOVE_LOG_PADDING = 5
@@ -118,7 +124,11 @@ def main():
                         #print(move.getChessNotation())
                         for i in range(len(validMoves)):    
                             if move == validMoves[i]:
-                                gs.makeMove(validMoves[i])
+                                promotionChoice = 'Q'
+                                if validMoves[i].isPawnPromotionMove:
+                                    color = 'w' if gs.whiteToMove else 'b'
+                                    promotionChoice = drawPromotionMenu(screen, color)
+                                gs.makeMove(validMoves[i], promotionChoice)
                                 p.mixer.music.play()
                                 moveMade = True
                                 animate = True
@@ -327,7 +337,40 @@ def drawEndGameText(screen, text):
     screen.blit(textObject, textLocation)
     textObject = font.render(text, 0, p.Color(COLOR_ENDGAME_TEXT))
     screen.blit(textObject, textLocation.move(SHADOW_OFFSET, SHADOW_OFFSET))
-        
+
+
+def drawPromotionMenu(screen, color):
+    """Draw a promotion piece selection menu and return the chosen piece type."""
+    panelWidth = SQ_SIZE * 4
+    panelHeight = SQ_SIZE
+    panelX = (BOARD_WIDTH - panelWidth) // 2
+    panelY = (BOARD_HEIGHT - panelHeight) // 2
+
+    # Draw panel background
+    p.draw.rect(screen, PROMOTION_PANEL_COLOR, p.Rect(panelX, panelY, panelWidth, panelHeight))
+    p.draw.rect(screen, PROMOTION_BORDER_COLOR, p.Rect(panelX, panelY, panelWidth, panelHeight), 2)
+
+    # Draw piece options
+    for i, piece in enumerate(PROMOTION_PIECES):
+        pieceKey = color + piece
+        x = panelX + i * SQ_SIZE
+        screen.blit(IMAGES[pieceKey], p.Rect(x, panelY, SQ_SIZE, SQ_SIZE))
+
+    p.display.flip()
+
+    # Wait for player to click a piece
+    while True:
+        for e in p.event.get():
+            if e.type == p.QUIT:
+                p.quit()
+                exit()
+            if e.type == p.MOUSEBUTTONDOWN:
+                mx, my = p.mouse.get_pos()
+                if panelY <= my <= panelY + panelHeight and panelX <= mx <= panelX + panelWidth:
+                    index = (mx - panelX) // SQ_SIZE
+                    if 0 <= index < len(PROMOTION_PIECES):
+                        return PROMOTION_PIECES[index]
+
 
 if __name__ == "__main__":
     main()
