@@ -87,44 +87,81 @@ staticPieceActivityScore = {'K': 0, 'Q': 10, 'R': 6, 'N': 4, 'B': 4, 'P': 1}
 pieceScore = {'K':0, 'Q': 9, 'R':5, 'N':3, 'B': 3.15, 'P':1}
 CHECKMATE = 1000
 STALEMATE = 0
-DEPTH = 3
+MAX_DEPTH = 5
+
+# Transposition table: maps board state -> (depth, score, best_move)
+transpositionTable = {}
+
+def getBoardKey(gs: object) -> tuple:
+    """Generate a hashable key from the current board state."""
+    return (tuple(tuple(row) for row in gs.board), gs.whiteToMove,
+            gs.currentCastlingRights.wks, gs.currentCastlingRights.wqs,
+            gs.currentCastlingRights.bks, gs.currentCastlingRights.bqs,
+            gs.enPassantPossible)
 
 def findRandomMove(validMoves: list) -> object:
     """Finds a random move as a fallback when the AI cannot determine the best move."""
-    #randMove = validMoves[random.randint(0,len(validMoves)-1)]
     return random.choice(validMoves)
 
 
 def findBestMove(gs: object, validMoves: list, returnQueue: Queue) -> None:
-    """Entry point for AI search. Finds the best move and puts it on the returnQueue."""
-    global nextMove
+    """Entry point for AI search using iterative deepening."""
+    global nextMove, transpositionTable
     nextMove = None
-    findMoveNegaMaxAlphaBeta(gs, validMoves, DEPTH, -CHECKMATE, CHECKMATE, 1 if gs.whiteToMove else -1)
+    transpositionTable = {}
+    # Iterative deepening: search depth 1, 2, ... up to MAX_DEPTH.
+    # Each iteration improves move ordering for the next via the transposition table.
+    for currentDepth in range(1, MAX_DEPTH + 1):
+        findMoveNegaMaxAlphaBeta(gs, validMoves, currentDepth, currentDepth, -CHECKMATE, CHECKMATE, 1 if gs.whiteToMove else -1)
     returnQueue.put(nextMove)
 
 
-def findMoveNegaMaxAlphaBeta(gs: object, validMoves: list, depth: int, alpha: float, beta: float, turnMultiplier: int) -> float:
-    """NegaMax search with alpha-beta pruning. Returns the best score for the current player."""
+def findMoveNegaMaxAlphaBeta(gs: object, validMoves: list, depth: int, maxDepth: int, alpha: float, beta: float, turnMultiplier: int) -> float:
+    """NegaMax search with alpha-beta pruning and transposition table lookup."""
     global nextMove
+
+    boardKey = getBoardKey(gs)
+    if boardKey in transpositionTable:
+        ttDepth, ttScore, ttMove = transpositionTable[boardKey]
+        if ttDepth >= depth:
+            if depth == maxDepth and ttMove is not None:
+                nextMove = ttMove
+            return ttScore
+
     if depth == 0:
-        return turnMultiplier * scoreBoard(gs, validMoves)
-    
-    #move ordering - implement later
+        score = turnMultiplier * scoreBoard(gs, validMoves)
+        transpositionTable[boardKey] = (0, score, None)
+        return score
+
+    # Order moves: use transposition table best move first, then captures, then rest
+    def moveOrderKey(move):
+        if boardKey in transpositionTable:
+            _, _, ttBestMove = transpositionTable[boardKey]
+            if ttBestMove is not None and move.moveID == ttBestMove.moveID:
+                return 0  # Search this first
+        if move.isCapture:
+            return 1  # Captures second
+        return 2  # Quiet moves last
+    orderedMoves = sorted(validMoves, key=moveOrderKey)
+
     maxScore = -CHECKMATE
-    for move in validMoves:
+    bestMove = None
+    for move in orderedMoves:
         gs.makeMove(move)
         nextMoves = gs.getValidMoves()
-        score = -findMoveNegaMaxAlphaBeta(gs, nextMoves, depth-1, -beta, -alpha, -turnMultiplier)
+        score = -findMoveNegaMaxAlphaBeta(gs, nextMoves, depth-1, maxDepth, -beta, -alpha, -turnMultiplier)
         if score > maxScore:
             maxScore = score
-            if depth == DEPTH:
+            bestMove = move
+            if depth == maxDepth:
                 nextMove = move
-                #print(move, score)
         gs.undoMove()
         if maxScore > alpha:
             alpha = maxScore
         if alpha >= beta:
             break
+
+    transpositionTable[boardKey] = (depth, maxScore, bestMove)
     return maxScore
 
             
