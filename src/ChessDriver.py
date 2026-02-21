@@ -56,7 +56,7 @@ def main():
     moveUndone = False
     
     playerOne = True # If white is played by human then true, else false.
-    playerTwo = True # If black is played by human then true, else false.    
+    playerTwo = False # If black is played by human then true, else false.    
     while running:
         humanTurn = (playerOne and gs.whiteToMove) or (playerTwo and not gs.whiteToMove)
         for e in p.event.get():

@@ -74,7 +74,7 @@ mobilityScores = {
     'N': lambda x: (x-5)*0.3,
     'B': lambda x: (x-8)*0.15,
     'Q': lambda x: (x-12)*0.25,
-    'R': lambda x: (x-4)*250,
+    'R': lambda x: (x-4)*0.25,
     'P': lambda x: 0,
     'K': lambda x: 0
     }
@@ -146,11 +146,9 @@ def scoreBoard(gs, validMoves):
                     piecePositionScore = piecePositionScores[square][row][col]
                     
                 # Mobility, Activity -> (AttackScore, DefenseScore)
-                mobilityScore = 0
-                activityScore = 0
+                noOfMoves = 0
+                activity = 0
                 for move in validMoves:
-                    noOfMoves = 0
-                    activity = 0
                     if move.startRow == row and move.startCol == col:
                         noOfMoves += 1
                         endPiece = gs.board[move.endRow][move.endCol]
@@ -158,7 +156,6 @@ def scoreBoard(gs, validMoves):
                             # Activity -> It consists of defensive and attacking ability of a piece.
                             activity += staticPieceActivityScore[square[1]]
                 mobilityScore = mobilityScores[square[1]](noOfMoves)
-                print(mobilityScore, noOfMoves)
                 activityScore = activity/10
                 score += scoreMultiplier * (pieceScore[square[1]] + piecePositionScore + mobilityScore + activityScore)
     return score

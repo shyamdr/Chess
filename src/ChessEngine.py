@@ -83,7 +83,7 @@ class GameState():
             self.board[move.startRow][move.startCol] = move.pieceMoved # Put piece on starting square.
             self.board[move.endRow][move.endCol] = move.pieceCaptured # Put back captured piece. 
             self.whiteToMove = not self.whiteToMove # Switch turns back.
-            #move.pgn.pop() # Delete the move from PGN
+
             # Update king's position.
             if move.pieceMoved == 'wK':
                 self.whiteKingLocation = (move.startRow, move.startCol)
@@ -126,7 +126,7 @@ class GameState():
                 elif move.startCol == 7:
                     self.currentCastlingRights.wks = False
         elif move.pieceMoved == 'bR':
-            if move.startRow == 7:
+            if move.startRow == 0:
                 if move.startCol == 0:
                     self.currentCastlingRights.bqs = False
                 elif move.startCol == 7:
@@ -559,8 +559,6 @@ class Move():
     
     filesToCols = {"a":0, "b":1, "c":2, "d":3, "e":4, "f":5, "g":6, "h":7}
     colsToFiles = {v: k for k,v in filesToCols.items()}
-    
-    pgn = []
     
     def __init__(self, startSq, endSq, board, isEnPassantMove = False, isPawnPromotionMove = False, isCastleMove = False):
         self.startRow = startSq[0]
