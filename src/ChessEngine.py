@@ -200,6 +200,8 @@ class GameState():
         elif self.isInsufficientMaterial():
             self.stalemate = True
     
+        return moves
+    
     def isInsufficientMaterial(self) -> bool:
         """Check if neither side has enough material to checkmate."""
         pieces = []
