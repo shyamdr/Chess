@@ -24,7 +24,7 @@
 ### Medium
 - [x] Threefold repetition detection — track position history, declare draw
 - [x] 50-move rule — count half-moves since last pawn move or capture
-- [ ] Game clock / timer — add configurable time controls per side
+- [x] Game clock / timer — add configurable time controls per side
 - [ ] Improve AI evaluation — king safety, pawn structure, piece coordination
 - [ ] Better rook piece-square tables — penalize edge/corner squares more
 

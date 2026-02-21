@@ -1,4 +1,5 @@
 import math
+import time
 import pygame as p
 import ChessEngine, ChessAI
 from sys import exit
@@ -65,6 +66,76 @@ MOVES_PER_ROW = 2
 MOVE_LOG_PADDING = 5
 MOVE_LOG_LINE_SPACING = 3
 
+# Clock settings
+CLOCK_TIME_SECONDS = 600  # 10 minutes per side
+CLOCK_HEIGHT = 50
+CLOCK_FONT_NAME = "Consolas"
+CLOCK_FONT_SIZE = 32
+CLOCK_BG_WHITE = (240, 240, 240)
+CLOCK_BG_BLACK = (50, 50, 50)
+CLOCK_TEXT_WHITE = (30, 30, 30)
+CLOCK_TEXT_BLACK = (220, 220, 220)
+CLOCK_ACTIVE_BORDER = (80, 200, 80)
+CLOCK_BORDER_WIDTH = 3
+
+
+class GameClock:
+    """Tracks remaining time for both players."""
+
+    def __init__(self, totalSeconds: float = CLOCK_TIME_SECONDS) -> None:
+        self.whiteTime = totalSeconds
+        self.blackTime = totalSeconds
+        self.lastTick = None
+        self.running = False
+        self.whiteTimedOut = False
+        self.blackTimedOut = False
+
+    def start(self) -> None:
+        """Start the clock."""
+        self.lastTick = time.time()
+        self.running = True
+
+    def pause(self) -> None:
+        """Pause the clock (e.g., game over)."""
+        self.running = False
+        self.lastTick = None
+
+    def tick(self, whiteToMove: bool) -> None:
+        """Deduct elapsed time from the active player's clock."""
+        if not self.running or self.lastTick is None:
+            return
+        now = time.time()
+        elapsed = now - self.lastTick
+        self.lastTick = now
+        if whiteToMove:
+            self.whiteTime = max(0, self.whiteTime - elapsed)
+            if self.whiteTime <= 0:
+                self.whiteTimedOut = True
+        else:
+            self.blackTime = max(0, self.blackTime - elapsed)
+            if self.blackTime <= 0:
+                self.blackTimedOut = True
+
+    def reset(self, totalSeconds: float = CLOCK_TIME_SECONDS) -> None:
+        """Reset both clocks."""
+        self.whiteTime = totalSeconds
+        self.blackTime = totalSeconds
+        self.lastTick = None
+        self.running = False
+        self.whiteTimedOut = False
+        self.blackTimedOut = False
+
+    @staticmethod
+    def formatTime(seconds: float) -> str:
+        """Format seconds as M:SS or S.s when under 10 seconds."""
+        if seconds <= 0:
+            return "0:00"
+        if seconds < 10:
+            return f"{seconds:.1f}"
+        mins = int(seconds) // 60
+        secs = int(seconds) % 60
+        return f"{mins}:{secs:02d}"
+
 IMAGES = {}
 
 def load_Files():
@@ -98,7 +169,9 @@ def main():
     moveUndone = False
     
     playerOne = True # If white is played by human then true, else false.
-    playerTwo = True # If black is played by human then true, else false.    
+    playerTwo = True # If black is played by human then true, else false.
+    gameClock = GameClock()
+    gameClock.start()
     while running:
         humanTurn = (playerOne and gs.whiteToMove) or (playerTwo and not gs.whiteToMove)
         for e in p.event.get():
@@ -165,6 +238,8 @@ def main():
                         moveFinderProcess.terminate()
                         AIThinking = False
                     moveUndone = True
+                    gameClock.reset()
+                    gameClock.start()
                 
                 # Press 'T' to load a test position (debug).
                 if e.key == p.K_t:
@@ -213,10 +288,20 @@ def main():
             animate = False
             moveUndone = False
             
-        drawGameState(screen,gs, validMoves, sqSelected, moveLogFont)
+        drawGameState(screen, gs, validMoves, sqSelected, moveLogFont, gameClock)
         
-        if gs.checkmate or gs.stalemate or gs.insufficientMaterial or gs.threefoldRepetition or gs.fiftyMoveRule:
+        # Tick the game clock.
+        if not gameOver:
+            gameClock.tick(gs.whiteToMove)
+        
+        if gameClock.whiteTimedOut or gameClock.blackTimedOut:
             gameOver = True
+            gameClock.pause()
+            text = 'Black wins on Time!' if gameClock.whiteTimedOut else 'White wins on Time!'
+            drawEndGameText(screen, text)
+        elif gs.checkmate or gs.stalemate or gs.insufficientMaterial or gs.threefoldRepetition or gs.fiftyMoveRule:
+            gameOver = True
+            gameClock.pause()
             if gs.checkmate:
                 text = 'Black wins by Checkmate!' if gs.whiteToMove else 'White wins by Checkmate!'
             elif gs.insufficientMaterial:
@@ -232,13 +317,14 @@ def main():
         clock.tick(MAX_FPS)
         p.display.flip()
         
-def drawGameState(screen, gs, validMoves, sqSelected, moveLogFont):
-    """Draw the complete game state: board, highlights, pieces, and move log."""
+def drawGameState(screen, gs, validMoves, sqSelected, moveLogFont, gameClock):
+    """Draw the complete game state: board, highlights, pieces, move log, and clocks."""
     drawBoard(screen) # draw the squares on the board.
     highlightSquares(screen, gs, sqSelected) # Highlighting squares on the board.
     drawPieces(screen, gs.board) # add the pieces on the squares. 
     highlightMoves(screen, gs, validMoves, sqSelected) # Highlighting possible moves.
     drawMoveLog(screen, gs, moveLogFont)
+    drawClocks(screen, gameClock, gs.whiteToMove)
     
 def drawBoard(screen):
     global colors
@@ -296,7 +382,8 @@ def highlightMoves(screen,gs,validMoves,sqSelected):
                     #screen.blit(s, (move.endCol*SQ_SIZE, move.endRow*SQ_SIZE))
                     
 def drawMoveLog(screen, gs, font):
-    moveLogRect = p.Rect(BOARD_WIDTH, 0, MLP_WIDTH, MLP_HEIGHT)
+    """Draw the move log panel between the two clocks."""
+    moveLogRect = p.Rect(BOARD_WIDTH, CLOCK_HEIGHT, MLP_WIDTH, MLP_HEIGHT - 2 * CLOCK_HEIGHT)
     p.draw.rect(screen, p.Color(COLOR_MOVE_LOG_BG), moveLogRect)
     moveLog = gs.moveLog
     moveTexts = []
@@ -318,6 +405,27 @@ def drawMoveLog(screen, gs, font):
         textLocation = moveLogRect.move(padding, textY)
         screen.blit(textObject, textLocation)
         textY += textObject.get_height() + lineSpacing
+
+
+def drawClocks(screen, gameClock, whiteToMove):
+    """Draw the game clocks — black at top of panel, white at bottom."""
+    clockFont = p.font.SysFont(CLOCK_FONT_NAME, CLOCK_FONT_SIZE, True, False)
+
+    # Black clock (top of move log panel).
+    blackRect = p.Rect(BOARD_WIDTH, 0, MLP_WIDTH, CLOCK_HEIGHT)
+    p.draw.rect(screen, CLOCK_BG_BLACK, blackRect)
+    if not whiteToMove and gameClock.running:
+        p.draw.rect(screen, CLOCK_ACTIVE_BORDER, blackRect, CLOCK_BORDER_WIDTH)
+    blackText = clockFont.render(GameClock.formatTime(gameClock.blackTime), True, CLOCK_TEXT_BLACK)
+    screen.blit(blackText, blackText.get_rect(center=blackRect.center))
+
+    # White clock (bottom of move log panel).
+    whiteRect = p.Rect(BOARD_WIDTH, BOARD_HEIGHT - CLOCK_HEIGHT, MLP_WIDTH, CLOCK_HEIGHT)
+    p.draw.rect(screen, CLOCK_BG_WHITE, whiteRect)
+    if whiteToMove and gameClock.running:
+        p.draw.rect(screen, CLOCK_ACTIVE_BORDER, whiteRect, CLOCK_BORDER_WIDTH)
+    whiteText = clockFont.render(GameClock.formatTime(gameClock.whiteTime), True, CLOCK_TEXT_WHITE)
+    screen.blit(whiteText, whiteText.get_rect(center=whiteRect.center))
     
 def animateMove(move,screen,board,clock):
     global colors
