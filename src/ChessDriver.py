@@ -98,7 +98,7 @@ def main():
     moveUndone = False
     
     playerOne = True # If white is played by human then true, else false.
-    playerTwo = False # If black is played by human then true, else false.    
+    playerTwo = True # If black is played by human then true, else false.    
     while running:
         humanTurn = (playerOne and gs.whiteToMove) or (playerTwo and not gs.whiteToMove)
         for e in p.event.get():
@@ -195,9 +195,15 @@ def main():
             
         drawGameState(screen,gs, validMoves, sqSelected, moveLogFont)
         
-        if gs.checkmate or gs.stalemate:
+        if gs.checkmate or gs.stalemate or gs.insufficientMaterial:
             gameOver = True
-            drawEndGameText(screen, 'Stalemate!' if gs.stalemate else 'Black wins by Checkmate!' if gs.whiteToMove else 'White wins by Checkmate!')
+            if gs.checkmate:
+                text = 'Black wins by Checkmate!' if gs.whiteToMove else 'White wins by Checkmate!'
+            elif gs.insufficientMaterial:
+                text = 'Draw — Insufficient Material!'
+            else:
+                text = 'Stalemate!'
+            drawEndGameText(screen, text)
                     
         clock.tick(MAX_FPS)
         p.display.flip()

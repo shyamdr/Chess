@@ -29,6 +29,7 @@ class GameState():
         self.checks = []        
         self.checkmate = False
         self.stalemate = False
+        self.insufficientMaterial = False
         self.enPassantPossible = ()
         self.enPassantPossibleLog = [self.enPassantPossible]
         # Castling rights.
@@ -111,6 +112,7 @@ class GameState():
                     self.board[move.endRow][move.endCol+1] = "--" 
             self.checkmate = False
             self.stalemate = False
+            self.insufficientMaterial = False
                     
                 
                
@@ -198,7 +200,7 @@ class GameState():
             else:
                 self.stalemate = True
         elif self.isInsufficientMaterial():
-            self.stalemate = True
+            self.insufficientMaterial = True
     
         return moves
     
