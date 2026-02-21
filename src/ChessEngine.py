@@ -1,6 +1,9 @@
+from __future__ import annotations
+
+
 class GameState():
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.board = [
             ["bR","bN","bB","bQ","bK","bB","bN","bR"],
             ["bP","bP","bP","bP","bP","bP","bP","bP"],
@@ -34,8 +37,8 @@ class GameState():
                                              self.currentCastlingRights.bks, self.currentCastlingRights.bqs)]
     
         
-    ''' Makes the move that is passed as a parameter. '''    
-    def makeMove(self,move):
+    def makeMove(self, move: Move) -> None:
+        """Makes the move that is passed as a parameter."""
         self.board[move.startRow][move.startCol] = "--"
         self.board[move.endRow][move.endCol] = move.pieceMoved
         self.moveLog.append(move)
@@ -76,8 +79,8 @@ class GameState():
                                                   self.currentCastlingRights.bks, self.currentCastlingRights.bqs))
                 
             
-    ''' Undo the last move made. '''    
-    def undoMove(self):    
+    def undoMove(self) -> None:
+        """Undo the last move made."""    
         if len(self.moveLog) != 0:
             move = self.moveLog.pop()
             self.board[move.startRow][move.startCol] = move.pieceMoved # Put piece on starting square.
@@ -112,7 +115,7 @@ class GameState():
                     
                 
                
-    def updateCastleRights(self,move):
+    def updateCastleRights(self, move: Move) -> None:
         if move.pieceMoved == 'wK':
             self.currentCastlingRights.wks = False
             self.currentCastlingRights.wqs = False
@@ -144,8 +147,8 @@ class GameState():
                 elif move.endCol == 7:
                     self.currentCastlingRights.bks = False        
     
-    ''' All moves considering checks. '''
-    def getValidMoves(self):
+    def getValidMoves(self) -> list[Move]:
+        """Returns all moves considering checks."""
         tempCastleRights = CastleRights(self.currentCastlingRights.wks, self.currentCastlingRights.wqs,
                                         self.currentCastlingRights.bks, self.currentCastlingRights.bqs)                
         moves = []
@@ -196,43 +199,17 @@ class GameState():
             else:
                 self.stalemate = True
     
-        orderedMoves = []
-        for i in range(len(moves)-1, -1, -1):
-            if self.inCheck:
-                orderedMoves.append(moves[i])
-                #moves.remove(moves[i])
-            elif self.board[moves[i].endRow][moves[i].endCol] != "--" and self.board[moves[i].endRow][moves[i].endCol][0] != self.whiteToMove:
-                orderedMoves.append(moves[i])
-                #moves.remove(moves[i])
-            else:
-                orderedMoves.append(moves[i])
-                #moves.remove(moves[i])       
-        return orderedMoves
+        return moves
     
-    def moveOrdering(self,moves):
-        orderedMoves = []
-        for i in range(len(moves)-1, -1, -1):
-            if self.inCheck:
-                orderedMoves.append(moves[i])
-                moves.remove(moves[i])
-            elif self.board[moves[i].endRow][moves[i].endCol] != "--" and self.board[moves[i].endRow][moves[i].endCol][0] != self.whiteToMove:
-                orderedMoves.append(moves[i])
-                moves.remove(moves[i])
-            else:
-                orderedMoves.append(moves[i])
-                moves.remove(moves[i])
-                
-        return orderedMoves
-    
-    '''Determine if a current player is in check'''
-    def InCheck(self):
+    def InCheck(self) -> bool:
+        """Determine if the current player is in check."""
         if self.whiteToMove:
             return self.squareUnderAttack(self.whiteKingLocation[0], self.whiteKingLocation[1])
         else:
             return self.squareUnderAttack(self.blackKingLocation[0], self.blackKingLocation[1])
         
-    '''Determine if enemy can attack the square row col'''    
-    def squareUnderAttack(self, row, col):
+    def squareUnderAttack(self, row: int, col: int) -> bool:
+        """Determine if the enemy can attack the square at (row, col)."""
         self.whiteToMove = not self.whiteToMove  # switch to opponent's point of view
         opponents_moves = self.getAllPossibleMoves()
         self.whiteToMove = not self.whiteToMove
@@ -241,8 +218,8 @@ class GameState():
                 return True
         return False  
     
-    # All moves not considering checks.
-    def getAllPossibleMoves(self):
+    def getAllPossibleMoves(self) -> list[Move]:
+        """Get all moves without considering checks (pseudo-legal moves)."""
         moves = []
         for r in range(len(self.board)):
             for c in range(len(self.board[r])):
@@ -254,8 +231,8 @@ class GameState():
         return moves
 
                         
-    '''Get all piece moves for Pawns located on the location (r,c).'''    
-    def getPawnMoves(self,r,c,moves):
+    def getPawnMoves(self, r: int, c: int, moves: list[Move]) -> None:
+        """Get all pawn moves from position (r, c) and add them to moves."""
         piecePinned = False
         pinDirection = ()
         for i in range(len(self.pins)-1, -1, -1):
@@ -344,8 +321,8 @@ class GameState():
                         moves.append(Move((r,c), (r+moveAmount, c+1), self.board, isEnPassantMove = True))                
                     
                   
-    '''Get all piece moves for Knights located on the location (r,c).'''                          
-    def getKnightMoves(self,r,c,moves):
+    def getKnightMoves(self, r: int, c: int, moves: list[Move]) -> None:
+        """Get all knight moves from position (r, c) and add them to moves."""
         piecePinned = False
         for i in range(len(self.pins)-1, -1, -1):
             if self.pins[i][0] == r and self.pins[i][1] == c:
@@ -364,8 +341,8 @@ class GameState():
                     if endPiece[0] != friendlyColor: # Enemy piece / Empty square  - Valid
                         moves.append(Move((r,c), (endRow,endCol), self.board))
                     
-    '''Get all piece moves for Bishops located on the location (r,c).''' 
-    def getBishopMoves(self,r,c,moves):
+    def getBishopMoves(self, r: int, c: int, moves: list[Move]) -> None:
+        """Get all bishop moves from position (r, c) and add them to moves."""
         piecePinned = False
         pinDirection = ()
         for i in range(len(self.pins)-1, -1, -1):
@@ -395,8 +372,8 @@ class GameState():
                 else:
                     break
                               
-    '''Get all piece moves for Rooks located on the location (r,c).'''   
-    def getRookMoves(self,r,c,moves):
+    def getRookMoves(self, r: int, c: int, moves: list[Move]) -> None:
+        """Get all rook moves from position (r, c) and add them to moves."""
         piecePinned = False
         pinDirection = ()
         for i in range(len(self.pins)-1, -1, -1):
@@ -426,13 +403,13 @@ class GameState():
                 else: # Off-board
                     break
                 
-    '''Get all piece moves for Queens located on the location (r,c).'''                
-    def getQueenMoves(self,r,c,moves):
+    def getQueenMoves(self, r: int, c: int, moves: list[Move]) -> None:
+        """Get all queen moves from position (r, c) and add them to moves."""
         self.getRookMoves(r, c, moves)
         self.getBishopMoves(r, c, moves)
         
-    '''Get all piece moves for Kings located on the location (r,c).'''
-    def getKingMoves(self,r,c,moves):
+    def getKingMoves(self, r: int, c: int, moves: list[Move]) -> None:
+        """Get all king moves from position (r, c) and add them to moves."""
         rowMoves = (-1, -1, -1,  0, 0,  1, 1, 1)
         colMoves = (-1,  0,  1, -1, 1, -1, 0, 1)
         friendlyColor = "w" if self.whiteToMove else "b"
@@ -456,8 +433,8 @@ class GameState():
                     else:
                         self.blackKingLocation = (r,c)
     
-    ''' Returns if the player is in check, a list of pins and a list of checks. '''
-    def checkForPinsAndChecks(self):
+    def checkForPinsAndChecks(self) -> tuple[bool, list, list]:
+        """Returns (inCheck, pins, checks) for the current player's king."""
         pins = [] # Squares where the friendly pinned piece is and direction pinned from.
         checks = [] # Squares where enemy is applying a check.
         inCheck = False
@@ -523,7 +500,7 @@ class GameState():
                     checks.append((endRow, endCol, m[0], m[1]))
         return inCheck, pins, checks
     
-    def getCastleMoves(self, r, c, moves):
+    def getCastleMoves(self, r: int, c: int, moves: list[Move]) -> None:
         if self.squareUnderAttack(r,c):
             return # Can't castle while in check.
         if (self.whiteToMove and self.currentCastlingRights.wks) or (not self.whiteToMove and self.currentCastlingRights.bks):
@@ -531,12 +508,12 @@ class GameState():
         if (self.whiteToMove and self.currentCastlingRights.wqs) or (not self.whiteToMove and self.currentCastlingRights.bqs):
             self.getQueenSideCastleMoves(r,c,moves)
         
-    def getKingSideCastleMoves(self,r,c,moves):
+    def getKingSideCastleMoves(self, r: int, c: int, moves: list[Move]) -> None:
         if self.board[r][c+1] == "--" and self.board[r][c+2] == "--":
             if not self.squareUnderAttack(r,c+1) and not self.squareUnderAttack(r,c+2):
                 moves.append(Move((r,c), (r,c+2), self.board, isCastleMove = True))
                 
-    def getQueenSideCastleMoves(self, r, c, moves):
+    def getQueenSideCastleMoves(self, r: int, c: int, moves: list[Move]) -> None:
         if self.board[r][c-1] == '--' and self.board[r][c-2] == '--' and self.board[r][c-3] == '--':
             if not self.squareUnderAttack(r, c-1) and not self.squareUnderAttack(r, c-2):
                 moves.append(Move((r, c), (r, c-2), self.board, isCastleMove=True))
@@ -544,7 +521,7 @@ class GameState():
     
 
 class CastleRights():
-    def __init__(self,wks,wqs,bks,bqs):
+    def __init__(self, wks: bool, wqs: bool, bks: bool, bqs: bool) -> None:
         self.wks = wks
         self.wqs = wqs
         self.bks = bks
@@ -560,7 +537,8 @@ class Move():
     filesToCols = {"a":0, "b":1, "c":2, "d":3, "e":4, "f":5, "g":6, "h":7}
     colsToFiles = {v: k for k,v in filesToCols.items()}
     
-    def __init__(self, startSq, endSq, board, isEnPassantMove = False, isPawnPromotionMove = False, isCastleMove = False):
+    def __init__(self, startSq: tuple[int, int], endSq: tuple[int, int], board: list[list[str]],
+                 isEnPassantMove: bool = False, isPawnPromotionMove: bool = False, isCastleMove: bool = False) -> None:
         self.startRow = startSq[0]
         self.startCol = startSq[1]
         self.endRow = endSq[0]
@@ -578,25 +556,21 @@ class Move():
         
         self.moveID = self.startRow*1000 + self.startCol*100 + self.endRow*10 + self.endCol
         
-    '''
-    Overriding the equals method. 
-    The computer isnt able to recognize if the move hard coded in "moves"  in "getAllPossibleMoves"
-    function is same as that played on the screen, so in case of using classes, we need to explicitly
-    tell that both moves are same known as overriding the equals method.
-    '''    
-    def __eq__(self,other):
+    def __eq__(self, other: object) -> bool:
+        """Check equality by comparing move IDs (start/end square encoding)."""
         if isinstance(other, Move):
             return self.moveID == other.moveID
         return False
     
-    def getChessNotation(self):
-        # originl code:
+    def getChessNotation(self) -> str:
+        """Return the move in long algebraic notation (e.g. 'e2e4')."""
         return self.getRankFile(self.startRow, self.startCol) + self.getRankFile(self.endRow, self.endCol)
     
-    def getRankFile(self,r,c):
+    def getRankFile(self, r: int, c: int) -> str:
+        """Convert row, col to chess notation (e.g. 'e4')."""
         return self.colsToFiles[c] + self.rowsToRanks[r]
      
-    def __str__(self):
+    def __str__(self) -> str:
         if self.isCastleMove:
             return "0-0" if self.endCol == 6 else "0-0-0"
         
