@@ -3,6 +3,9 @@
 # playing deadly, inhumane game of chess. (Still pretty stupid actually...)
 # =============================================================================
 
+from __future__ import annotations
+from multiprocessing import Queue
+
 # ----------------
 # TO-DO
 # -> Calculating phase of the game using numpy arrays,
@@ -86,21 +89,22 @@ CHECKMATE = 1000
 STALEMATE = 0
 DEPTH = 3
 
-""" Finds a random move if the AI cannot find the best move. """
-def findRandomMove(validMoves):
+def findRandomMove(validMoves: list) -> object:
+    """Finds a random move as a fallback when the AI cannot determine the best move."""
     #randMove = validMoves[random.randint(0,len(validMoves)-1)]
     return random.choice(validMoves)
 
 
-""" Helper Method to make the first recursive call. """
-def findBestMove(gs, validMoves, returnQueue):
+def findBestMove(gs: object, validMoves: list, returnQueue: Queue) -> None:
+    """Entry point for AI search. Finds the best move and puts it on the returnQueue."""
     global nextMove
     nextMove = None
     findMoveNegaMaxAlphaBeta(gs, validMoves, DEPTH, -CHECKMATE, CHECKMATE, 1 if gs.whiteToMove else -1)
     returnQueue.put(nextMove)
 
 
-def findMoveNegaMaxAlphaBeta(gs, validMoves, depth, alpha, beta, turnMultiplier):
+def findMoveNegaMaxAlphaBeta(gs: object, validMoves: list, depth: int, alpha: float, beta: float, turnMultiplier: int) -> float:
+    """NegaMax search with alpha-beta pruning. Returns the best score for the current player."""
     global nextMove
     if depth == 0:
         return turnMultiplier * scoreBoard(gs, validMoves)
@@ -124,8 +128,8 @@ def findMoveNegaMaxAlphaBeta(gs, validMoves, depth, alpha, beta, turnMultiplier)
     return maxScore
 
             
-""" Score the Gamestate based on Material and position(TBD) """        
-def scoreBoard(gs, validMoves):
+def scoreBoard(gs: object, validMoves: list) -> float:
+    """Score the board based on material, piece position, mobility, and activity."""
     
     if gs.checkmate:
         if gs.whiteToMove:
