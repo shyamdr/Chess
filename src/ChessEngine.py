@@ -209,13 +209,69 @@ class GameState():
             return self.squareUnderAttack(self.blackKingLocation[0], self.blackKingLocation[1])
         
     def squareUnderAttack(self, row: int, col: int) -> bool:
-        """Determine if the enemy can attack the square at (row, col)."""
-        self.whiteToMove = not self.whiteToMove  # switch to opponent's point of view
-        opponents_moves = self.getAllPossibleMoves()
-        self.whiteToMove = not self.whiteToMove
-        for move in opponents_moves:
-            if move.endRow == row and move.endCol == col:  # square is under attack
-                return True
+        """Determine if the enemy can attack the square at (row, col) using targeted detection."""
+        enemyColor = 'b' if self.whiteToMove else 'w'
+
+        # Check for knight attacks
+        knightMoves = ((-2,-1), (-2,1), (-1,-2), (-1,2), (1,-2), (1,2), (2,-1), (2,1))
+        for m in knightMoves:
+            endRow, endCol = row + m[0], col + m[1]
+            if 0 <= endRow < 8 and 0 <= endCol < 8:
+                piece = self.board[endRow][endCol]
+                if piece[0] == enemyColor and piece[1] == 'N':
+                    return True
+
+        # Check for pawn attacks
+        if enemyColor == 'b':
+            pawnAttacks = ((-1, -1), (-1, 1))  # Black pawns attack downward
+        else:
+            pawnAttacks = ((1, -1), (1, 1))  # White pawns attack upward
+        for m in pawnAttacks:
+            endRow, endCol = row + m[0], col + m[1]
+            if 0 <= endRow < 8 and 0 <= endCol < 8:
+                piece = self.board[endRow][endCol]
+                if piece[0] == enemyColor and piece[1] == 'P':
+                    return True
+
+        # Check for king attacks (1 square in any direction)
+        kingMoves = ((-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1))
+        for m in kingMoves:
+            endRow, endCol = row + m[0], col + m[1]
+            if 0 <= endRow < 8 and 0 <= endCol < 8:
+                piece = self.board[endRow][endCol]
+                if piece[0] == enemyColor and piece[1] == 'K':
+                    return True
+
+        # Check for rook/queen attacks (orthogonal lines)
+        rookDirections = ((-1,0), (1,0), (0,-1), (0,1))
+        for d in rookDirections:
+            for step in range(1, 8):
+                endRow, endCol = row + d[0]*step, col + d[1]*step
+                if 0 <= endRow < 8 and 0 <= endCol < 8:
+                    piece = self.board[endRow][endCol]
+                    if piece == "--":
+                        continue
+                    if piece[0] == enemyColor and piece[1] in ('R', 'Q'):
+                        return True
+                    break  # Blocked by any piece
+                else:
+                    break
+
+        # Check for bishop/queen attacks (diagonal lines)
+        bishopDirections = ((-1,-1), (-1,1), (1,-1), (1,1))
+        for d in bishopDirections:
+            for step in range(1, 8):
+                endRow, endCol = row + d[0]*step, col + d[1]*step
+                if 0 <= endRow < 8 and 0 <= endCol < 8:
+                    piece = self.board[endRow][endCol]
+                    if piece == "--":
+                        continue
+                    if piece[0] == enemyColor and piece[1] in ('B', 'Q'):
+                        return True
+                    break  # Blocked by any piece
+                else:
+                    break
+
         return False  
     
     def getAllPossibleMoves(self) -> list[Move]:
