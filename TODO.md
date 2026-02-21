@@ -25,10 +25,10 @@
 - [x] Threefold repetition detection — track position history, declare draw
 - [x] 50-move rule — count half-moves since last pawn move or capture
 - [x] Game clock / timer — add configurable time controls per side
-- [ ] Improve AI evaluation — king safety, pawn structure, piece coordination
-- [ ] Better rook piece-square tables — penalize edge/corner squares more
+- [x] Improve AI evaluation — king safety, pawn structure, piece coordination
+- [x] Better rook piece-square tables — penalize edge/corner squares more
 
 ### Hard
-- [ ] Opening book — load and follow known opening lines from a database
+- [x] Opening book — load and follow known opening lines from a database
 - [ ] Endgame tablebases (Syzygy) — perfect play with ≤6 pieces remaining
-- [ ] Quiescence search — extend search on captures to avoid horizon effect
+- [x] Quiescence search — extend search on captures to avoid horizon effect

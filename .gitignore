@@ -1,1 +1,4 @@
 __pycache__/
+venv/
+ai_debug.json
+.kiro/

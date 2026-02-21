@@ -5,6 +5,17 @@ import ChessEngine, ChessAI
 from sys import exit
 from multiprocessing import Process, Queue
 
+# =============================================================================
+# Game Configuration — Change these to customize gameplay
+# =============================================================================
+PLAYER_ONE = True   # True = human plays white, False = AI plays white
+PLAYER_TWO = False   # True = human plays black, False = AI plays black
+CLOCK_TIME_SECONDS = 600    # Time per side in seconds (600 = 10 min)
+AI_SEARCH_DEPTH = 4         # Main search depth (higher = stronger but slower)
+AI_QUIESCENCE_DEPTH = 5     # Extra plies for capture-only search
+AI_DEBUG = True              # Log AI thinking to ai_debug.json for analysis
+# =============================================================================
+
 """
 Color codes:
     black -> (255,255,255)
@@ -67,7 +78,6 @@ MOVE_LOG_PADDING = 5
 MOVE_LOG_LINE_SPACING = 3
 
 # Clock settings
-CLOCK_TIME_SECONDS = 600  # 10 minutes per side
 CLOCK_HEIGHT = 50
 CLOCK_FONT_NAME = "Consolas"
 CLOCK_FONT_SIZE = 32
@@ -168,10 +178,16 @@ def main():
     moveFinderProcess = None
     moveUndone = False
     
-    playerOne = True # If white is played by human then true, else false.
-    playerTwo = True # If black is played by human then true, else false.
+    playerOne = PLAYER_ONE
+    playerTwo = PLAYER_TWO
     gameClock = GameClock()
     gameClock.start()
+    # Clear AI debug log at game start to avoid stale entries from previous sessions.
+    if AI_DEBUG:
+        try:
+            open(ChessAI.AI_DEBUG_LOG_FILE, 'w').write('[]')
+        except Exception:
+            pass
     while running:
         humanTurn = (playerOne and gs.whiteToMove) or (playerTwo and not gs.whiteToMove)
         for e in p.event.get():
@@ -240,6 +256,12 @@ def main():
                     moveUndone = True
                     gameClock.reset()
                     gameClock.start()
+                    # Clear AI debug log for the new game.
+                    if AI_DEBUG:
+                        try:
+                            open(ChessAI.AI_DEBUG_LOG_FILE, 'w').write('[]')
+                        except Exception:
+                            pass
                 
                 # Press 'T' to load a test position (debug).
                 if e.key == p.K_t:
@@ -267,7 +289,7 @@ def main():
                 AIThinking = True
                 #print("Thinking .... \n")
                 returnQueue = Queue() # used to pass data betwee threads.
-                moveFinderProcess = Process(target = ChessAI.findBestMove, args = (gs,validMoves,returnQueue))
+                moveFinderProcess = Process(target = ChessAI.findBestMove, args = (gs, validMoves, returnQueue, AI_SEARCH_DEPTH, AI_QUIESCENCE_DEPTH, AI_DEBUG))
                 moveFinderProcess.start() # calls the findBestMove function.
                 
             if not moveFinderProcess.is_alive():
