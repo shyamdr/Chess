@@ -30,12 +30,19 @@ class GameState():
         self.checkmate = False
         self.stalemate = False
         self.insufficientMaterial = False
+        self.threefoldRepetition = False
+        self.fiftyMoveRule = False
+        self.halfMoveClock = 0
+        self.halfMoveClockLog = [0]
+        self.positionHistory = {}
         self.enPassantPossible = ()
         self.enPassantPossibleLog = [self.enPassantPossible]
         # Castling rights.
         self.currentCastlingRights = CastleRights(True,True,True,True)
         self.castleRightsLog = [CastleRights(self.currentCastlingRights.wks, self.currentCastlingRights.wqs,
                                              self.currentCastlingRights.bks, self.currentCastlingRights.bqs)]
+        # Record starting position for threefold repetition tracking.
+        self.positionHistory[self._getPositionKey()] = 1
     
         
     def makeMove(self, move: Move, promotionChoice: str = 'Q') -> None:
@@ -77,6 +84,20 @@ class GameState():
         self.updateCastleRights(move)
         self.castleRightsLog.append(CastleRights(self.currentCastlingRights.wks, self.currentCastlingRights.wqs,
                                                   self.currentCastlingRights.bks, self.currentCastlingRights.bqs))
+        # Update half-move clock (reset on pawn move or capture).
+        if move.pieceMoved[1] == 'P' or move.pieceCaptured != '--':
+            self.halfMoveClock = 0
+        else:
+            self.halfMoveClock += 1
+        self.halfMoveClockLog.append(self.halfMoveClock)
+        # Track position for threefold repetition.
+        posKey = self._getPositionKey()
+        self.positionHistory[posKey] = self.positionHistory.get(posKey, 0) + 1
+        # Check draw conditions.
+        if self.halfMoveClock >= 100:
+            self.fiftyMoveRule = True
+        if self.positionHistory[posKey] >= 3:
+            self.threefoldRepetition = True
                 
             
     def undoMove(self) -> None:
@@ -113,6 +134,16 @@ class GameState():
             self.checkmate = False
             self.stalemate = False
             self.insufficientMaterial = False
+            self.threefoldRepetition = False
+            self.fiftyMoveRule = False
+            # Undo position history.
+            posKey = self._getPositionKey()
+            self.positionHistory[posKey] = self.positionHistory.get(posKey, 1) - 1
+            if self.positionHistory[posKey] <= 0:
+                del self.positionHistory[posKey]
+            # Undo half-move clock.
+            self.halfMoveClockLog.pop()
+            self.halfMoveClock = self.halfMoveClockLog[-1]
                     
                 
                
@@ -201,6 +232,10 @@ class GameState():
                 self.stalemate = True
         elif self.isInsufficientMaterial():
             self.insufficientMaterial = True
+        elif self.fiftyMoveRule:
+            pass  # Already set in makeMove.
+        elif self.threefoldRepetition:
+            pass  # Already set in makeMove.
     
         return moves
     
@@ -232,6 +267,12 @@ class GameState():
         return False
     
         return moves
+    def _getPositionKey(self) -> tuple:
+        """Returns a hashable key representing the current board position, side to move, castling rights, and en passant."""
+        boardTuple = tuple(tuple(row) for row in self.board)
+        cr = self.currentCastlingRights
+        return (boardTuple, self.whiteToMove, cr.wks, cr.wqs, cr.bks, cr.bqs, self.enPassantPossible)
+
     
     def InCheck(self) -> bool:
         """Determine if the current player is in check."""

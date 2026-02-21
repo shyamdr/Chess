@@ -165,6 +165,26 @@ def main():
                         moveFinderProcess.terminate()
                         AIThinking = False
                     moveUndone = True
+                
+                # Press 'T' to load a test position (debug).
+                if e.key == p.K_t:
+                    gs.board = [
+                        ["--","--","--","--","bK","--","--","--"],
+                        ["--","--","--","--","--","--","--","--"],
+                        ["--","--","--","bB","--","--","--","--"],
+                        ["--","--","--","--","--","--","--","--"],
+                        ["--","--","--","--","--","--","--","--"],
+                        ["--","--","--","--","--","--","--","--"],
+                        ["--","--","--","--","--","--","--","--"],
+                        ["--","--","--","--","wK","--","--","--"]]
+                    gs.whiteKingLocation = (7, 4)
+                    gs.blackKingLocation = (0, 4)
+                    gs.whiteToMove = True
+                    validMoves = gs.getValidMoves()
+                    sqSelected = ()
+                    playerClicks = []
+                    moveMade = False
+                    gameOver = False
                     
         # AI Logic goes here.
         if not(gameOver or humanTurn or moveUndone):
@@ -195,12 +215,16 @@ def main():
             
         drawGameState(screen,gs, validMoves, sqSelected, moveLogFont)
         
-        if gs.checkmate or gs.stalemate or gs.insufficientMaterial:
+        if gs.checkmate or gs.stalemate or gs.insufficientMaterial or gs.threefoldRepetition or gs.fiftyMoveRule:
             gameOver = True
             if gs.checkmate:
                 text = 'Black wins by Checkmate!' if gs.whiteToMove else 'White wins by Checkmate!'
             elif gs.insufficientMaterial:
                 text = 'Draw — Insufficient Material!'
+            elif gs.threefoldRepetition:
+                text = 'Draw — Threefold Repetition!'
+            elif gs.fiftyMoveRule:
+                text = 'Draw — 50 Move Rule!'
             else:
                 text = 'Stalemate!'
             drawEndGameText(screen, text)

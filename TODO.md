@@ -22,8 +22,8 @@
 - [x] Draw by insufficient material (K vs K, K+B vs K, K+N vs K)
 
 ### Medium
-- [ ] Threefold repetition detection — track position history, declare draw
-- [ ] 50-move rule — count half-moves since last pawn move or capture
+- [x] Threefold repetition detection — track position history, declare draw
+- [x] 50-move rule — count half-moves since last pawn move or capture
 - [ ] Game clock / timer — add configurable time controls per side
 - [ ] Improve AI evaluation — king safety, pawn structure, piece coordination
 - [ ] Better rook piece-square tables — penalize edge/corner squares more
