@@ -275,6 +275,12 @@ BISHOP_PAIR_BONUS = 0.5
 ROOK_OPEN_FILE_BONUS = 0.3
 ROOK_SEMI_OPEN_FILE_BONUS = 0.15
 
+# Evaluation granularity: small bonuses to differentiate "equal" positions
+CENTER_CONTROL_BONUS = 0.03  # Per piece/pawn attacking central squares (d4,d5,e4,e5)
+KNIGHT_OUTPOST_BONUS = 0.25  # Knight on rank 4-6 supported by pawn, no enemy pawn can attack
+ROOK_SEVENTH_RANK_BONUS = 0.3  # Rook on 7th rank (2nd for black)
+CONNECTED_ROOKS_BONUS = 0.15   # Both rooks on same rank/file with nothing between
+
 # Transposition table: maps board state -> (depth, score, flag, best_move)
 # Flag types for transposition table entries:
 TT_EXACT = 0      # Score is exact (no cutoff occurred)
@@ -299,8 +305,9 @@ def findRandomMove(validMoves: list) -> object:
 
 def findBestMove(gs: object, validMoves: list, returnQueue: Queue, searchDepth: int = 5, qDepth: int = 6, debug: bool = False) -> None:
     """Entry point for AI search. Checks opening book first, then uses iterative deepening."""
-    global nextMove, transpositionTable
+    global nextMove, transpositionTable, _rootMoveScores
     nextMove = None
+    _rootMoveScores = {}
     moveNumber = len(gs.moveLog) // 2 + 1
     side = "white" if gs.whiteToMove else "black"
 
@@ -324,6 +331,7 @@ def findBestMove(gs: object, validMoves: list, returnQueue: Queue, searchDepth: 
 
     # Iterative deepening: search depth 1, 2, ... up to searchDepth.
     for currentDepth in range(1, searchDepth + 1):
+        _rootMoveScores = {}
         iterStart = _time.time()
         score = findMoveNegaMaxAlphaBeta(gs, validMoves, currentDepth, currentDepth, -CHECKMATE, CHECKMATE, 1 if gs.whiteToMove else -1, qDepth)
         iterTime = _time.time() - iterStart
@@ -338,25 +346,16 @@ def findBestMove(gs: object, validMoves: list, returnQueue: Queue, searchDepth: 
     totalTime = _time.time() - startTime
 
     if debug:
-        # Score the top candidate moves at the final depth for comparison.
+        # Build top moves from actual root search scores (not TT lookups).
         topMoves = []
         for move in validMoves:
-            boardKey = getBoardKey(gs)
-            gs.makeMove(move)
-            childKey = getBoardKey(gs)
-            childScore = None
-            childFlag = None
-            if childKey in transpositionTable:
-                childScore = -transpositionTable[childKey][1]
-                childFlag = transpositionTable[childKey][2]
-            gs.undoMove()
-            flagLabel = {TT_EXACT: "exact", TT_LOWERBOUND: "lower", TT_UPPERBOUND: "upper"}.get(childFlag, "?") if childFlag is not None else None
+            moveKey = move.getChessNotation()
+            moveScore = _rootMoveScores.get(move.moveID)
             topMoves.append({
-                "move": move.getChessNotation(),
+                "move": moveKey,
                 "piece": move.pieceMoved,
                 "capture": move.pieceCaptured if move.isCapture else None,
-                "score": round(childScore, 3) if childScore is not None else "not in TT",
-                "bound": flagLabel if flagLabel else "not in TT",
+                "score": round(moveScore, 3) if moveScore is not None else "pruned",
             })
         # Sort by score descending (best first).
         topMoves.sort(key=lambda x: x["score"] if isinstance(x["score"], (int, float)) else -9999, reverse=True)
@@ -385,17 +384,19 @@ def findBestMove(gs: object, validMoves: list, returnQueue: Queue, searchDepth: 
 
 
 
+
 def findMoveNegaMaxAlphaBeta(gs: object, validMoves: list, depth: int, maxDepth: int, alpha: float, beta: float, turnMultiplier: int, qDepth: int = 6) -> float:
     """NegaMax search with alpha-beta pruning and transposition table lookup."""
-    global nextMove
+    global nextMove, _rootMoveScores
+
+    isRoot = (depth == maxDepth)
 
     boardKey = getBoardKey(gs)
-    if boardKey in transpositionTable:
+    # Skip TT cutoffs at root so every root move gets a real score for debug/selection.
+    if not isRoot and boardKey in transpositionTable:
         ttDepth, ttScore, ttFlag, ttMove = transpositionTable[boardKey]
         if ttDepth >= depth:
             if ttFlag == TT_EXACT:
-                if depth == maxDepth and ttMove is not None:
-                    nextMove = ttMove
                 return ttScore
             elif ttFlag == TT_LOWERBOUND:
                 if ttScore >= beta:
@@ -411,7 +412,7 @@ def findMoveNegaMaxAlphaBeta(gs: object, validMoves: list, depth: int, maxDepth:
     if depth == 0:
         return quiescenceSearch(gs, validMoves, alpha, beta, turnMultiplier, qDepth)
 
-    # Order moves: use transposition table best move first, then captures, then rest
+    # Order moves: use transposition table best move first, then captures, then rest.
     def moveOrderKey(move):
         if boardKey in transpositionTable:
             _, _, _, ttBestMove = transpositionTable[boardKey]
@@ -432,9 +433,12 @@ def findMoveNegaMaxAlphaBeta(gs: object, validMoves: list, depth: int, maxDepth:
         if score > maxScore:
             maxScore = score
             bestMove = move
-            if depth == maxDepth:
+            if isRoot:
                 nextMove = move
         gs.undoMove()
+        # Record actual score for each root move (for debug logging).
+        if isRoot:
+            _rootMoveScores[move.moveID] = score
         if maxScore > alpha:
             alpha = maxScore
         if alpha >= beta:
@@ -452,7 +456,9 @@ def findMoveNegaMaxAlphaBeta(gs: object, validMoves: list, depth: int, maxDepth:
     return maxScore
 
 
+
             
+
 
 
 def scoreBoard(gs: object, validMoves: list) -> float:
@@ -460,17 +466,23 @@ def scoreBoard(gs: object, validMoves: list) -> float:
 
     if gs.checkmate:
         return -CHECKMATE if gs.whiteToMove else CHECKMATE
-    elif gs.stalemate:
+    elif gs.stalemate or gs.threefoldRepetition or gs.fiftyMoveRule or gs.insufficientMaterial:
         return STALEMATE
 
     score = 0.0
 
-    # Collect pawn positions for structure analysis.
+    # Collect pawn positions and piece positions for structure analysis.
     whitePawnCols = []
     blackPawnCols = []
     whitePawns = []
     blackPawns = []
+    whitePawnSet: set[tuple[int, int]] = set()
+    blackPawnSet: set[tuple[int, int]] = set()
     totalMaterial = 0
+    whiteRooks: list[tuple[int, int]] = []
+    blackRooks: list[tuple[int, int]] = []
+    whiteKnights: list[tuple[int, int]] = []
+    blackKnights: list[tuple[int, int]] = []
 
     for row in range(8):
         for col in range(8):
@@ -480,9 +492,19 @@ def scoreBoard(gs: object, validMoves: list) -> float:
             if sq == 'wP':
                 whitePawnCols.append(col)
                 whitePawns.append((row, col))
+                whitePawnSet.add((row, col))
             elif sq == 'bP':
                 blackPawnCols.append(col)
                 blackPawns.append((row, col))
+                blackPawnSet.add((row, col))
+            elif sq == 'wR':
+                whiteRooks.append((row, col))
+            elif sq == 'bR':
+                blackRooks.append((row, col))
+            elif sq == 'wN':
+                whiteKnights.append((row, col))
+            elif sq == 'bN':
+                blackKnights.append((row, col))
             if sq[1] not in ('K', 'P'):
                 totalMaterial += pieceScore[sq[1]]
 
@@ -494,10 +516,16 @@ def scoreBoard(gs: object, validMoves: list) -> float:
             score += scoreMultiplier * (pieceScore[sq[1]] + piecePositionScore)
 
     # Mobility: only count for the side to move (the only side we have moves for).
-    # Apply a smaller bonus so it doesn't dominate material.
-    for move in validMoves:
-        mobilityMultiplier = 1 if gs.whiteToMove else -1
-        score += mobilityMultiplier * 0.05  # Small per-move bonus
+    # Use a small bonus (0.01) to avoid the massive one-sided bias that 0.05 caused
+    # (20 moves * 0.05 = 1.0 point swing just for having the move).
+    mobilityMultiplier = 1 if gs.whiteToMove else -1
+    mobilityScore = len(validMoves) * 0.01
+    score += mobilityMultiplier * mobilityScore
+
+    # Center control: count pieces/pawns attacking central squares (d4,d5,e4,e5).
+    centerSquares = {(3, 3), (3, 4), (4, 3), (4, 4)}
+    centerCount = sum(1 for m in validMoves if (m.endRow, m.endCol) in centerSquares)
+    score += mobilityMultiplier * centerCount * CENTER_CONTROL_BONUS
 
     # Pawn structure scoring.
     score += _scorePawnStructure(whitePawns, whitePawnCols, blackPawnCols, 1)
@@ -525,7 +553,54 @@ def scoreBoard(gs: object, validMoves: list) -> float:
     # Rook on open/semi-open file bonus.
     score += _scoreRooksOnFiles(gs, whitePawnCols, blackPawnCols)
 
+    # Knight outposts: knight on rank 4-6 (for white) supported by own pawn, no enemy pawn can attack.
+    blackPawnColSet = set(blackPawnCols)
+    for r, c in whiteKnights:
+        if 2 <= r <= 4:  # Ranks 4-6 for white (rows 2-4)
+            # Supported by own pawn?
+            supported = (r + 1, c - 1) in whitePawnSet or (r + 1, c + 1) in whitePawnSet
+            # Can enemy pawn attack this square?
+            canBeAttacked = False
+            for er, ec in blackPawns:
+                if abs(ec - c) == 1 and er > r:  # Enemy pawn behind that could advance
+                    canBeAttacked = True
+                    break
+            if supported and not canBeAttacked:
+                score += KNIGHT_OUTPOST_BONUS
+    whitePawnColSet = set(whitePawnCols)
+    for r, c in blackKnights:
+        if 3 <= r <= 5:  # Ranks 4-6 for black (rows 3-5)
+            supported = (r - 1, c - 1) in blackPawnSet or (r - 1, c + 1) in blackPawnSet
+            canBeAttacked = False
+            for er, ec in whitePawns:
+                if abs(ec - c) == 1 and er < r:
+                    canBeAttacked = True
+                    break
+            if supported and not canBeAttacked:
+                score -= KNIGHT_OUTPOST_BONUS
+
+    # Rook on 7th rank bonus.
+    for r, c in whiteRooks:
+        if r == 1:  # 7th rank for white
+            score += ROOK_SEVENTH_RANK_BONUS
+    for r, c in blackRooks:
+        if r == 6:  # 7th rank for black (2nd rank)
+            score -= ROOK_SEVENTH_RANK_BONUS
+
+    # Connected rooks bonus (same rank or file, nothing between).
+    if len(whiteRooks) == 2:
+        score += _connectedRooksBonus(gs, whiteRooks[0], whiteRooks[1])
+    if len(blackRooks) == 2:
+        score -= _connectedRooksBonus(gs, blackRooks[0], blackRooks[1])
+
+    # Tiny hash-based tiebreaker so no two different positions score identically.
+    # This ensures the AI differentiates between "equally good" moves and picks
+    # the one leading to the most favorable unique position.
+    boardKey = getBoardKey(gs)
+    score += (hash(boardKey) % 10000) * 0.00001  # ±0.1 max, negligible vs real eval
+
     return score
+
 
 
 def quiescenceSearch(gs: object, validMoves: list, alpha: float, beta: float, turnMultiplier: int, depthLeft: int) -> float:
@@ -667,6 +742,27 @@ def _scoreRooksOnFiles(gs: object, whitePawnCols: list[int], blackPawnCols: list
                 elif col not in blackColSet:
                     score -= ROOK_SEMI_OPEN_FILE_BONUS
     return score
+
+def _connectedRooksBonus(gs: object, rook1: tuple[int, int], rook2: tuple[int, int]) -> float:
+    """Return CONNECTED_ROOKS_BONUS if two rooks are on the same rank/file with nothing between."""
+    r1, c1 = rook1
+    r2, c2 = rook2
+    if r1 == r2:
+        # Same rank — check columns between.
+        minC, maxC = min(c1, c2), max(c1, c2)
+        for c in range(minC + 1, maxC):
+            if gs.board[r1][c] != "--":
+                return 0.0
+        return CONNECTED_ROOKS_BONUS
+    elif c1 == c2:
+        # Same file — check rows between.
+        minR, maxR = min(r1, r2), max(r1, r2)
+        for r in range(minR + 1, maxR):
+            if gs.board[r][c1] != "--":
+                return 0.0
+        return CONNECTED_ROOKS_BONUS
+    return 0.0
+
 
 
 

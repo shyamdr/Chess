@@ -11,8 +11,8 @@ from multiprocessing import Process, Queue
 PLAYER_ONE = True   # True = human plays white, False = AI plays white
 PLAYER_TWO = False   # True = human plays black, False = AI plays black
 CLOCK_TIME_SECONDS = 600    # Time per side in seconds (600 = 10 min)
-AI_SEARCH_DEPTH = 4         # Main search depth (higher = stronger but slower)
-AI_QUIESCENCE_DEPTH = 5     # Extra plies for capture-only search
+AI_SEARCH_DEPTH = 5         # Main search depth (higher = stronger but slower)
+AI_QUIESCENCE_DEPTH = 6     # Extra plies for capture-only search
 AI_DEBUG = True              # Log AI thinking to ai_debug.json for analysis
 # =============================================================================
 
