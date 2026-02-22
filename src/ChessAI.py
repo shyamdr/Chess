@@ -287,6 +287,20 @@ TT_LOWERBOUND = 1 # Score is a lower bound (beta cutoff)
 TT_UPPERBOUND = 2 # Score is an upper bound (failed low)
 transpositionTable = {}
 
+# Null move pruning: skip a move and do a shallow search. If the opponent
+# still can't beat beta even with a free move, prune the branch.
+NULL_MOVE_REDUCTION = 2  # Depth reduction for null move search (R=2 is standard)
+NULL_MOVE_MIN_DEPTH = 3  # Don't do null move at shallow depths
+
+# Killer moves: non-capture moves that caused beta cutoffs, indexed by depth.
+# Two killer slots per depth level (most recent cutoff moves).
+MAX_KILLER_DEPTH = 32
+killerMoves: list[list[object | None]] = [[None, None] for _ in range(MAX_KILLER_DEPTH)]
+
+# History heuristic: tracks how often each move causes a beta cutoff.
+# Indexed by (piece, endSquare) for efficiency.
+historyTable: dict[int, int] = {}
+
 def getBoardKey(gs: object) -> int:
     """Return the Zobrist hash as the board key (O(1) — maintained incrementally in GameState)."""
     return gs.zobristHash
@@ -326,6 +340,8 @@ def findBestMove(gs: object, validMoves: list, returnQueue: Queue, searchDepth: 
         return
 
     transpositionTable = {}
+    killerMoves[:] = [[None, None] for _ in range(MAX_KILLER_DEPTH)]
+    historyTable.clear()
     iterationResults = []
     startTime = _time.time()
     bestMoveSoFar = None
@@ -405,8 +421,44 @@ def findBestMove(gs: object, validMoves: list, returnQueue: Queue, searchDepth: 
 
 
 
-def findMoveNegaMaxAlphaBeta(gs: object, validMoves: list, depth: int, maxDepth: int, alpha: float, beta: float, turnMultiplier: int, qDepth: int = 6) -> float:
-    """NegaMax search with alpha-beta pruning and transposition table lookup."""
+def _moveOrderKey(m: object, ttBestMoveID: int, depth: int) -> int:
+    """Return a sort key for move ordering. Lower = searched first.
+    Order: TT best move (0) > captures by MVV-LVA (100-199) > killer moves (200-201) > history (300+) > quiet (400).
+    """
+    if m.moveID == ttBestMoveID:
+        return 0
+    if m.isCapture:
+        # MVV-LVA: prioritize capturing high-value pieces with low-value attackers.
+        victim = pieceScore.get(m.pieceCaptured[1], 0) if m.pieceCaptured != "--" else 0
+        attacker = pieceScore.get(m.pieceMoved[1], 0)
+        return 100 + int((9 - victim) * 10 + attacker)
+    # Killer moves (non-captures that caused beta cutoffs at this depth).
+    if depth < MAX_KILLER_DEPTH:
+        if killerMoves[depth][0] is not None and killerMoves[depth][0].moveID == m.moveID:
+            return 200
+        if killerMoves[depth][1] is not None and killerMoves[depth][1].moveID == m.moveID:
+            return 201
+    # History heuristic score.
+    hScore = historyTable.get(m.moveID, 0)
+    if hScore > 0:
+        return 300 - min(hScore, 99)  # Higher history = lower key = searched earlier.
+    return 400
+
+
+def _storeKiller(move: object, depth: int) -> None:
+    """Store a killer move at the given depth (non-capture that caused beta cutoff)."""
+    if depth >= MAX_KILLER_DEPTH:
+        return
+    # Don't store duplicates.
+    if killerMoves[depth][0] is not None and killerMoves[depth][0].moveID == move.moveID:
+        return
+    # Shift slot 0 to slot 1, store new in slot 0.
+    killerMoves[depth][1] = killerMoves[depth][0]
+    killerMoves[depth][0] = move
+
+
+def findMoveNegaMaxAlphaBeta(gs: object, validMoves: list, depth: int, maxDepth: int, alpha: float, beta: float, turnMultiplier: int, qDepth: int = 6, allowNullMove: bool = True) -> float:
+    """NegaMax search with alpha-beta pruning, null move pruning, killer moves, and TT."""
     global nextMove, _rootMoveScores
 
     isRoot = (depth == maxDepth)
@@ -432,11 +484,27 @@ def findMoveNegaMaxAlphaBeta(gs: object, validMoves: list, depth: int, maxDepth:
     if depth == 0:
         return quiescenceSearch(gs, validMoves, alpha, beta, turnMultiplier, qDepth)
 
-    # Order moves: TT best move first, then captures (MVV-LVA), then quiet moves.
+    # --- Null move pruning ---
+    # If we're not in check, not at root, and have enough depth, try passing.
+    # The idea: if skipping our turn and doing a shallow search still beats beta,
+    # the position is so good we can prune without searching all moves.
+    if (allowNullMove and not isRoot and depth >= NULL_MOVE_MIN_DEPTH
+            and not gs.inCheck and not gs.checkmate and not gs.stalemate):
+        gs.makeNullMove()
+        # Do a shallow search with reduced depth (no further null moves to avoid recursion).
+        nullMoves = gs.getValidMoves()
+        nullScore = -findMoveNegaMaxAlphaBeta(
+            gs, nullMoves, depth - 1 - NULL_MOVE_REDUCTION, maxDepth,
+            -beta, -beta + 1, -turnMultiplier, qDepth, allowNullMove=False
+        )
+        gs.undoNullMove()
+        if nullScore >= beta:
+            return beta  # Null move cutoff — position is too good, prune.
+
+    # Order moves: TT best > captures (MVV-LVA) > killers > history > quiet.
     ttEntry = transpositionTable.get(boardKey)
     ttBestMoveID = ttEntry[3].moveID if ttEntry and ttEntry[3] is not None else -1
-    orderedMoves = sorted(validMoves,
-                          key=lambda m: (0 if m.moveID == ttBestMoveID else (1 if m.isCapture else 2)))
+    orderedMoves = sorted(validMoves, key=lambda m: _moveOrderKey(m, ttBestMoveID, depth))
 
     origAlpha = alpha
     maxScore = -CHECKMATE
@@ -457,6 +525,10 @@ def findMoveNegaMaxAlphaBeta(gs: object, validMoves: list, depth: int, maxDepth:
         if maxScore > alpha:
             alpha = maxScore
         if alpha >= beta:
+            # Beta cutoff — store killer move if it's a quiet move.
+            if not move.isCapture:
+                _storeKiller(move, depth)
+                historyTable[move.moveID] = historyTable.get(move.moveID, 0) + depth * depth
             break
 
     # Determine bound type for TT storage.

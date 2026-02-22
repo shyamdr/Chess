@@ -231,6 +231,36 @@ class GameState():
             # Undo half-move clock.
             self.halfMoveClockLog.pop()
             self.halfMoveClock = self.halfMoveClockLog[-1]
+
+    def makeNullMove(self) -> None:
+        """Make a null move (pass): just flip the side to move and clear en passant.
+        Used by null move pruning in the AI search."""
+        h = self.zobristHash
+        # Remove old en passant from hash.
+        if self.enPassantPossible:
+            h ^= zobristEnPassant[self.enPassantPossible[1]]
+        # Toggle side.
+        self.whiteToMove = not self.whiteToMove
+        h ^= zobristSide
+        # Save and clear en passant.
+        self.enPassantPossibleLog.append(())
+        self.enPassantPossible = ()
+        # Save zobrist.
+        self.zobristHash = h
+        self.zobristLog.append(h)
+
+    def undoNullMove(self) -> None:
+        """Undo a null move (pass)."""
+        # Restore zobrist.
+        self.zobristLog.pop()
+        self.zobristHash = self.zobristLog[-1]
+        # Restore en passant.
+        self.enPassantPossibleLog.pop()
+        self.enPassantPossible = self.enPassantPossibleLog[-1]
+        # Flip side back.
+        self.whiteToMove = not self.whiteToMove
+
+
                     
                 
                
@@ -298,7 +328,11 @@ class GameState():
                             break
                 # Filter moves: keep king moves and moves that block/capture.
                 validSquareSet = set(validSquares)
-                moves = [m for m in moves if m.pieceMoved[1] == 'K' or (m.endRow, m.endCol) in validSquareSet]
+                # En passant can capture a checking pawn even though the destination square
+                # differs from the checker's square (the captured pawn is beside, not on the target).
+                moves = [m for m in moves if m.pieceMoved[1] == 'K'
+                         or (m.endRow, m.endCol) in validSquareSet
+                         or (m.isEnPassantMove and (checkRow, checkCol) == (m.startRow, m.endCol))]
             else: # DOUBLE CHECK! king has to move.
                 self.getKingMoves(kingRow, kingCol, moves)
         else: # Not in check, so all the moves are valid.

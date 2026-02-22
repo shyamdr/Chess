@@ -43,6 +43,15 @@
 - [x] AI: Rook on open/semi-open file bonus
 - [x] AI: Hash-based position tiebreaker for score differentiation
 - [x] AI: Skip TT cutoffs at root to ensure all root moves get real scores
+- [x] Perf: Null move pruning — skip a move and do shallow search; if opponent still can't beat beta, prune (R=2)
+- [x] Perf: Killer move heuristic — two slots per depth, non-capture moves that caused beta cutoffs
+- [x] Perf: History heuristic — track cutoff frequency per move, use for quiet move ordering
+- [x] Perf: Improved move ordering — TT best > captures (MVV-LVA) > killers > history > quiet
+- [x] Bug: En passant capture not allowed as check evasion (checking pawn captured via EP was filtered out)
+- [x] Feature: Null move support in ChessEngine (makeNullMove/undoNullMove)
+- [x] Feature: ELO benchmarking — automated games against Stockfish at various skill levels
+- [x] Feature: Time management — allocate thinking time based on remaining clock
+- [x] Feature: Game replay viewer — Pygame tool to visually step through benchmark games
 
 ## Remaining — Known Issues
 
@@ -52,16 +61,11 @@
 
 ## Remaining — Performance
 
-- [ ] Null move pruning — skip a move and do a shallow search; if the opponent still can't beat beta, prune. Typically 2-3x node reduction.
 - [ ] Late move reductions (LMR) — search moves ordered late at reduced depth first, only re-search at full depth if promising.
-- [ ] Killer move heuristic — remember moves that caused beta cutoffs at each depth, try them early in sibling nodes.
-- [ ] History heuristic — track which moves cause cutoffs globally, use for move ordering.
 - [ ] Principal variation search (PVS) — search the first move with full window, remaining moves with null window, re-search if they beat alpha.
 
 ## Remaining — Features
 
-- [ ] ELO benchmarking — automated games against Stockfish at various strength levels to estimate engine rating.
 - [ ] Post-game analysis — compare AI moves against Stockfish to calculate average centipawn loss.
 - [ ] Endgame tablebases (Syzygy) — perfect play with ≤6 pieces remaining.
-- [ ] Time management — allocate more time for complex positions, less for forced/book moves.
 - [ ] Pondering — think on opponent's time.
