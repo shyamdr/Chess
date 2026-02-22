@@ -1,6 +1,14 @@
 # =============================================================================
-# This is the computer brain, responsible for finding the best move possible and
-# playing deadly, inhumane game of chess. (Still pretty stupid actually...)
+# Chess AI Engine
+#
+# NegaMax search with alpha-beta pruning, iterative deepening, transposition
+# tables (Zobrist hashing), quiescence search, and an opening book.
+#
+# Evaluation: material, piece-square tables, pawn structure, king safety,
+# piece coordination (bishop pair, connected rooks, knight outposts),
+# mobility, center control, rook activity.
+#
+# See TODO.md for remaining improvements (null move pruning, LMR, etc.)
 # =============================================================================
 
 from __future__ import annotations
@@ -8,15 +16,6 @@ from multiprocessing import Queue
 import json
 import os
 import time as _time
-
-# ----------------
-# TO-DO
-# -> Calculating phase of the game using numpy arrays,
-# -> Transposition tables
-# -> opening database & syzygy tables
-# -> move ordering before pruning(checks, captures, threats)
-# ----------------
-
 import random
 
 # =============================================================================
