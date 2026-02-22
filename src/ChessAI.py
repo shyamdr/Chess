@@ -299,8 +299,12 @@ def findRandomMove(validMoves: list) -> object:
 
 
 
-def findBestMove(gs: object, validMoves: list, returnQueue: Queue, searchDepth: int = 5, qDepth: int = 6, debug: bool = False) -> None:
-    """Entry point for AI search. Checks opening book first, then uses iterative deepening."""
+def findBestMove(gs: object, validMoves: list, returnQueue: Queue, searchDepth: int = 5, qDepth: int = 6, debug: bool = False, timeBudget: float = 0.0) -> None:
+    """Entry point for AI search. Checks opening book first, then uses iterative deepening.
+    
+    timeBudget: max seconds to spend searching. 0 means unlimited.
+    If time runs out between iterations, returns the best move found so far.
+    """
     global nextMove, transpositionTable, _rootMoveScores
     nextMove = None
     _rootMoveScores = {}
@@ -324,13 +328,27 @@ def findBestMove(gs: object, validMoves: list, returnQueue: Queue, searchDepth: 
     transpositionTable = {}
     iterationResults = []
     startTime = _time.time()
+    bestMoveSoFar = None
+    reachedDepth = 0
 
     # Iterative deepening: search depth 1, 2, ... up to searchDepth.
     for currentDepth in range(1, searchDepth + 1):
+        # Time check: if we've exceeded the budget, stop before starting a new depth.
+        if timeBudget > 0 and currentDepth > 1:
+            elapsed = _time.time() - startTime
+            if elapsed >= timeBudget:
+                break
+
         _rootMoveScores = {}
         iterStart = _time.time()
         score = findMoveNegaMaxAlphaBeta(gs, validMoves, currentDepth, currentDepth, -CHECKMATE, CHECKMATE, 1 if gs.whiteToMove else -1, qDepth)
         iterTime = _time.time() - iterStart
+
+        # This depth completed — save the best move.
+        if nextMove is not None:
+            bestMoveSoFar = nextMove
+            reachedDepth = currentDepth
+
         if debug:
             iterationResults.append({
                 "depth": currentDepth,
@@ -340,6 +358,10 @@ def findBestMove(gs: object, validMoves: list, returnQueue: Queue, searchDepth: 
             })
 
     totalTime = _time.time() - startTime
+
+    # Use bestMoveSoFar in case we broke out of the loop early.
+    if bestMoveSoFar is not None:
+        nextMove = bestMoveSoFar
 
     if debug:
         # Build top moves from actual root search scores (not TT lookups).
@@ -364,6 +386,8 @@ def findBestMove(gs: object, validMoves: list, returnQueue: Queue, searchDepth: 
             "chosenPiece": nextMove.pieceMoved if nextMove else None,
             "finalScore": round(score, 3),
             "searchDepth": searchDepth,
+            "reachedDepth": reachedDepth,
+            "timeBudget": timeBudget,
             "qDepth": qDepth,
             "totalTimeSeconds": round(totalTime, 3),
             "iterations": iterationResults,

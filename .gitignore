@@ -2,3 +2,4 @@ __pycache__/
 venv/
 ai_debug.json
 .kiro/
+benchmark_results/

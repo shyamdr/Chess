@@ -6,7 +6,7 @@ https://github.com/user-attachments/assets/84103de9-5a55-41f6-8db8-69a17702313a
 
 ## Overview
 
-A desktop chess game built with Python and Pygame. Supports human-vs-human, human-vs-AI, and AI-vs-AI play. Features full chess rule enforcement, move animation, game clocks, and an AI opponent that plays at a competitive amateur level.
+A desktop chess game built with Python and Pygame. Supports human-vs-human, human-vs-AI, and AI-vs-AI play. Features full chess rule enforcement, move animation, game clocks, and an AI opponent ("Dragon") that plays at ~1800 ELO strength.
 
 The project started as a follow-along of [Eddie Sharick's YouTube series](https://www.youtube.com/channel/UCaEohRz5bPHywGBwmR18Qww) and has since been significantly extended with a much stronger AI engine, draw detection, time controls, and a polished UI.
 
@@ -45,6 +45,20 @@ The engine is pure Python, so raw speed can't compete with C/C++ engines. Instea
 - **Optimized evaluation** — single board scan collects all piece positions, pawn columns, and material counts in one pass. No redundant loops.
 
 At depth 5 with quiescence, the AI typically takes 2-8 seconds per move in the middlegame on a modern machine.
+
+### Strength
+
+Benchmarked against Stockfish 18 at various Skill Levels (10 games, 10+0 rapid time control):
+
+| Opponent | Approx ELO | Score | Result |
+|----------|-----------|-------|--------|
+| SF Skill 0 | ~1300 | 2/2 | Won both |
+| SF Skill 3 | ~1500 | 2/2 | Won both |
+| SF Skill 5 | ~1700 | 2/2 | Won both |
+| SF Skill 8 | ~1900 | 0/2 | Lost both |
+| SF Skill 10 | ~2000 | 0/2 | Lost both |
+
+**Estimated ELO: ~1800** (6W / 0D / 4L). Dragon comfortably beats up to 1700-level play but struggles against 1900+.
 
 ### Debug Tooling
 
