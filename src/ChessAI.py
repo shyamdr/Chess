@@ -288,12 +288,9 @@ TT_LOWERBOUND = 1 # Score is a lower bound (beta cutoff)
 TT_UPPERBOUND = 2 # Score is an upper bound (failed low)
 transpositionTable = {}
 
-def getBoardKey(gs: object) -> tuple:
-    """Generate a hashable key from the current board state."""
-    return (tuple(tuple(row) for row in gs.board), gs.whiteToMove,
-            gs.currentCastlingRights.wks, gs.currentCastlingRights.wqs,
-            gs.currentCastlingRights.bks, gs.currentCastlingRights.bqs,
-            gs.enPassantPossible)
+def getBoardKey(gs: object) -> int:
+    """Return the Zobrist hash as the board key (O(1) — maintained incrementally in GameState)."""
+    return gs.zobristHash
 
 def findRandomMove(validMoves: list) -> object:
     """Finds a random move as a fallback when the AI cannot determine the best move."""
@@ -412,16 +409,11 @@ def findMoveNegaMaxAlphaBeta(gs: object, validMoves: list, depth: int, maxDepth:
     if depth == 0:
         return quiescenceSearch(gs, validMoves, alpha, beta, turnMultiplier, qDepth)
 
-    # Order moves: use transposition table best move first, then captures, then rest.
-    def moveOrderKey(move):
-        if boardKey in transpositionTable:
-            _, _, _, ttBestMove = transpositionTable[boardKey]
-            if ttBestMove is not None and move.moveID == ttBestMove.moveID:
-                return 0  # Search this first
-        if move.isCapture:
-            return 1  # Captures second
-        return 2  # Quiet moves last
-    orderedMoves = sorted(validMoves, key=moveOrderKey)
+    # Order moves: TT best move first, then captures (MVV-LVA), then quiet moves.
+    ttEntry = transpositionTable.get(boardKey)
+    ttBestMoveID = ttEntry[3].moveID if ttEntry and ttEntry[3] is not None else -1
+    orderedMoves = sorted(validMoves,
+                          key=lambda m: (0 if m.moveID == ttBestMoveID else (1 if m.isCapture else 2)))
 
     origAlpha = alpha
     maxScore = -CHECKMATE
@@ -461,6 +453,7 @@ def findMoveNegaMaxAlphaBeta(gs: object, validMoves: list, depth: int, maxDepth:
 
 
 
+
 def scoreBoard(gs: object, validMoves: list) -> float:
     """Score the board from white's perspective. Positive = white advantage."""
 
@@ -470,8 +463,9 @@ def scoreBoard(gs: object, validMoves: list) -> float:
         return STALEMATE
 
     score = 0.0
+    board = gs.board  # Local reference for speed.
 
-    # Collect pawn positions and piece positions for structure analysis.
+    # Single board scan: collect everything we need.
     whitePawnCols = []
     blackPawnCols = []
     whitePawns = []
@@ -483,48 +477,63 @@ def scoreBoard(gs: object, validMoves: list) -> float:
     blackRooks: list[tuple[int, int]] = []
     whiteKnights: list[tuple[int, int]] = []
     blackKnights: list[tuple[int, int]] = []
+    whiteBishops = 0
+    blackBishops = 0
 
     for row in range(8):
         for col in range(8):
-            sq = gs.board[row][col]
+            sq = board[row][col]
             if sq == "--":
                 continue
-            if sq == 'wP':
-                whitePawnCols.append(col)
-                whitePawns.append((row, col))
-                whitePawnSet.add((row, col))
-            elif sq == 'bP':
-                blackPawnCols.append(col)
-                blackPawns.append((row, col))
-                blackPawnSet.add((row, col))
-            elif sq == 'wR':
-                whiteRooks.append((row, col))
-            elif sq == 'bR':
-                blackRooks.append((row, col))
-            elif sq == 'wN':
-                whiteKnights.append((row, col))
-            elif sq == 'bN':
-                blackKnights.append((row, col))
-            if sq[1] not in ('K', 'P'):
-                totalMaterial += pieceScore[sq[1]]
+            color = sq[0]
+            piece = sq[1]
+
+            if piece == 'P':
+                if color == 'w':
+                    whitePawnCols.append(col)
+                    whitePawns.append((row, col))
+                    whitePawnSet.add((row, col))
+                else:
+                    blackPawnCols.append(col)
+                    blackPawns.append((row, col))
+                    blackPawnSet.add((row, col))
+            elif piece == 'R':
+                if color == 'w':
+                    whiteRooks.append((row, col))
+                else:
+                    blackRooks.append((row, col))
+            elif piece == 'N':
+                if color == 'w':
+                    whiteKnights.append((row, col))
+                else:
+                    blackKnights.append((row, col))
+            elif piece == 'B':
+                if color == 'w':
+                    whiteBishops += 1
+                else:
+                    blackBishops += 1
+
+            if piece not in ('K', 'P'):
+                totalMaterial += pieceScore[piece]
 
             # Material + positional scoring.
-            scoreMultiplier = 1 if sq[0] == 'w' else -1
+            scoreMultiplier = 1 if color == 'w' else -1
             piecePositionScore = 0
-            if sq[1] != "K":
+            if piece != "K":
                 piecePositionScore = piecePositionScores[sq][row][col]
-            score += scoreMultiplier * (pieceScore[sq[1]] + piecePositionScore)
+            score += scoreMultiplier * (pieceScore[piece] + piecePositionScore)
 
-    # Mobility: only count for the side to move (the only side we have moves for).
-    # Use a small bonus (0.01) to avoid the massive one-sided bias that 0.05 caused
-    # (20 moves * 0.05 = 1.0 point swing just for having the move).
+    # Mobility (small bonus to avoid one-sided bias).
     mobilityMultiplier = 1 if gs.whiteToMove else -1
-    mobilityScore = len(validMoves) * 0.01
-    score += mobilityMultiplier * mobilityScore
+    numMoves = len(validMoves)
+    score += mobilityMultiplier * numMoves * 0.01
 
-    # Center control: count pieces/pawns attacking central squares (d4,d5,e4,e5).
-    centerSquares = {(3, 3), (3, 4), (4, 3), (4, 4)}
-    centerCount = sum(1 for m in validMoves if (m.endRow, m.endCol) in centerSquares)
+    # Center control.
+    centerCount = 0
+    for m in validMoves:
+        er, ec = m.endRow, m.endCol
+        if 3 <= er <= 4 and 3 <= ec <= 4:
+            centerCount += 1
     score += mobilityMultiplier * centerCount * CENTER_CONTROL_BONUS
 
     # Pawn structure scoring.
@@ -536,70 +545,56 @@ def scoreBoard(gs: object, validMoves: list) -> float:
     score -= _scoreKingSafety(gs, gs.blackKingLocation, 'b', blackPawns, whitePawns, totalMaterial)
 
     # Bishop pair bonus.
-    whiteBishops = 0
-    blackBishops = 0
-    for row in range(8):
-        for col in range(8):
-            sq = gs.board[row][col]
-            if sq == 'wB':
-                whiteBishops += 1
-            elif sq == 'bB':
-                blackBishops += 1
     if whiteBishops >= 2:
         score += BISHOP_PAIR_BONUS
     if blackBishops >= 2:
         score -= BISHOP_PAIR_BONUS
 
-    # Rook on open/semi-open file bonus.
-    score += _scoreRooksOnFiles(gs, whitePawnCols, blackPawnCols)
+    # Rook on open/semi-open file bonus (using already-collected rook positions).
+    whiteColSet = set(whitePawnCols)
+    blackColSet = set(blackPawnCols)
+    for _, c in whiteRooks:
+        if c not in whiteColSet:
+            score += ROOK_OPEN_FILE_BONUS if c not in blackColSet else ROOK_SEMI_OPEN_FILE_BONUS
+    for _, c in blackRooks:
+        if c not in blackColSet:
+            score -= ROOK_OPEN_FILE_BONUS if c not in whiteColSet else ROOK_SEMI_OPEN_FILE_BONUS
 
-    # Knight outposts: knight on rank 4-6 (for white) supported by own pawn, no enemy pawn can attack.
-    blackPawnColSet = set(blackPawnCols)
+    # Knight outposts.
     for r, c in whiteKnights:
-        if 2 <= r <= 4:  # Ranks 4-6 for white (rows 2-4)
-            # Supported by own pawn?
+        if 2 <= r <= 4:
             supported = (r + 1, c - 1) in whitePawnSet or (r + 1, c + 1) in whitePawnSet
-            # Can enemy pawn attack this square?
-            canBeAttacked = False
-            for er, ec in blackPawns:
-                if abs(ec - c) == 1 and er > r:  # Enemy pawn behind that could advance
-                    canBeAttacked = True
-                    break
-            if supported and not canBeAttacked:
-                score += KNIGHT_OUTPOST_BONUS
-    whitePawnColSet = set(whitePawnCols)
+            if supported:
+                canBeAttacked = any(abs(ec - c) == 1 and er > r for er, ec in blackPawns)
+                if not canBeAttacked:
+                    score += KNIGHT_OUTPOST_BONUS
     for r, c in blackKnights:
-        if 3 <= r <= 5:  # Ranks 4-6 for black (rows 3-5)
+        if 3 <= r <= 5:
             supported = (r - 1, c - 1) in blackPawnSet or (r - 1, c + 1) in blackPawnSet
-            canBeAttacked = False
-            for er, ec in whitePawns:
-                if abs(ec - c) == 1 and er < r:
-                    canBeAttacked = True
-                    break
-            if supported and not canBeAttacked:
-                score -= KNIGHT_OUTPOST_BONUS
+            if supported:
+                canBeAttacked = any(abs(ec - c) == 1 and er < r for er, ec in whitePawns)
+                if not canBeAttacked:
+                    score -= KNIGHT_OUTPOST_BONUS
 
     # Rook on 7th rank bonus.
-    for r, c in whiteRooks:
-        if r == 1:  # 7th rank for white
+    for r, _ in whiteRooks:
+        if r == 1:
             score += ROOK_SEVENTH_RANK_BONUS
-    for r, c in blackRooks:
-        if r == 6:  # 7th rank for black (2nd rank)
+    for r, _ in blackRooks:
+        if r == 6:
             score -= ROOK_SEVENTH_RANK_BONUS
 
-    # Connected rooks bonus (same rank or file, nothing between).
+    # Connected rooks bonus.
     if len(whiteRooks) == 2:
-        score += _connectedRooksBonus(gs, whiteRooks[0], whiteRooks[1])
+        score += _connectedRooksBonus(board, whiteRooks[0], whiteRooks[1])
     if len(blackRooks) == 2:
-        score -= _connectedRooksBonus(gs, blackRooks[0], blackRooks[1])
+        score -= _connectedRooksBonus(board, blackRooks[0], blackRooks[1])
 
-    # Tiny hash-based tiebreaker so no two different positions score identically.
-    # This ensures the AI differentiates between "equally good" moves and picks
-    # the one leading to the most favorable unique position.
-    boardKey = getBoardKey(gs)
-    score += (hash(boardKey) % 10000) * 0.00001  # ±0.1 max, negligible vs real eval
+    # Hash-based tiebreaker.
+    score += (gs.zobristHash % 10000) * 0.00001
 
     return score
+
 
 
 
@@ -643,11 +638,6 @@ def _scorePawnStructure(pawns: list[tuple[int, int]], pawnCols: list[int], enemy
     for col in pawnCols:
         colCounts[col] += 1
 
-    # Build enemy pawn row lookup for passed pawn detection.
-    enemyPawnsByCol: dict[int, list[int]] = {}
-    # We don't have enemy pawn rows here, so we need to work with what we have.
-    # Actually we need the full enemy pawn list. Let's use a simpler check:
-    # a pawn is passed if no enemy pawns exist on the same or adjacent files.
     enemyColSet = set(enemyPawnCols)
 
     # Doubled pawns: penalize each extra pawn on the same file.
@@ -657,26 +647,20 @@ def _scorePawnStructure(pawns: list[tuple[int, int]], pawnCols: list[int], enemy
 
     for row, col in pawns:
         # Isolated pawns: no friendly pawns on adjacent files.
-        hasNeighbor = False
-        if col > 0 and colCounts[col - 1] > 0:
-            hasNeighbor = True
-        if col < 7 and colCounts[col + 1] > 0:
-            hasNeighbor = True
+        hasNeighbor = (col > 0 and colCounts[col - 1] > 0) or (col < 7 and colCounts[col + 1] > 0)
         if not hasNeighbor:
             score -= ISOLATED_PAWN_PENALTY
 
         # Passed pawns: no enemy pawns on same or adjacent files.
-        adjacentCols = {col}
-        if col > 0:
-            adjacentCols.add(col - 1)
-        if col < 7:
-            adjacentCols.add(col + 1)
-        isPassed = not adjacentCols.intersection(enemyColSet)
+        isPassed = col not in enemyColSet
+        if isPassed and col > 0:
+            isPassed = (col - 1) not in enemyColSet
+        if isPassed and col < 7:
+            isPassed = (col + 1) not in enemyColSet
         if isPassed:
             advancement = (7 - row) if multiplier == 1 else row
             score += PASSED_PAWN_BONUS[advancement]
 
-    # Apply multiplier at the end: positive for white, negative for black.
     return score * multiplier
 
 
@@ -687,12 +671,14 @@ def _scoreKingSafety(gs: object, kingPos: tuple[int, int], color: str,
                      friendlyPawns: list[tuple[int, int]], enemyPawns: list[tuple[int, int]],
                      totalMaterial: float) -> float:
     """Evaluate king safety based on pawn shield and open files near the king."""
-    # If little material left, king safety matters less.
     if totalMaterial < 12:
         return 0.0
 
     kr, kc = kingPos
     score = 0.0
+
+    # Build set for O(1) pawn lookups.
+    friendlyPawnSet = set(friendlyPawns)
 
     # Pawn shield: check the 2-3 squares directly in front of the king.
     shieldDir = -1 if color == 'w' else 1
@@ -700,12 +686,7 @@ def _scoreKingSafety(gs: object, kingPos: tuple[int, int], color: str,
     for col in shieldCols:
         shieldRow = kr + shieldDir
         shieldRow2 = kr + 2 * shieldDir
-        hasPawn = False
-        for pr, pc in friendlyPawns:
-            if pc == col and (pr == shieldRow or pr == shieldRow2):
-                hasPawn = True
-                break
-        if hasPawn:
+        if (shieldRow, col) in friendlyPawnSet or (shieldRow2, col) in friendlyPawnSet:
             score += PAWN_SHIELD_BONUS
 
     # Penalize open/semi-open files near the king.
@@ -721,29 +702,8 @@ def _scoreKingSafety(gs: object, kingPos: tuple[int, int], color: str,
 
 
 
-def _scoreRooksOnFiles(gs: object, whitePawnCols: list[int], blackPawnCols: list[int]) -> float:
-    """Bonus for rooks on open or semi-open files."""
-    score = 0.0
-    whiteColSet = set(whitePawnCols)
-    blackColSet = set(blackPawnCols)
-    for row in range(8):
-        for col in range(8):
-            sq = gs.board[row][col]
-            if sq[1] != 'R':
-                continue
-            if sq[0] == 'w':
-                if col not in whiteColSet and col not in blackColSet:
-                    score += ROOK_OPEN_FILE_BONUS
-                elif col not in whiteColSet:
-                    score += ROOK_SEMI_OPEN_FILE_BONUS
-            else:
-                if col not in whiteColSet and col not in blackColSet:
-                    score -= ROOK_OPEN_FILE_BONUS
-                elif col not in blackColSet:
-                    score -= ROOK_SEMI_OPEN_FILE_BONUS
-    return score
 
-def _connectedRooksBonus(gs: object, rook1: tuple[int, int], rook2: tuple[int, int]) -> float:
+def _connectedRooksBonus(board: list[list[str]], rook1: tuple[int, int], rook2: tuple[int, int]) -> float:
     """Return CONNECTED_ROOKS_BONUS if two rooks are on the same rank/file with nothing between."""
     r1, c1 = rook1
     r2, c2 = rook2
@@ -751,14 +711,14 @@ def _connectedRooksBonus(gs: object, rook1: tuple[int, int], rook2: tuple[int, i
         # Same rank — check columns between.
         minC, maxC = min(c1, c2), max(c1, c2)
         for c in range(minC + 1, maxC):
-            if gs.board[r1][c] != "--":
+            if board[r1][c] != "--":
                 return 0.0
         return CONNECTED_ROOKS_BONUS
     elif c1 == c2:
         # Same file — check rows between.
         minR, maxR = min(r1, r2), max(r1, r2)
         for r in range(minR + 1, maxR):
-            if gs.board[r][c1] != "--":
+            if board[r][c1] != "--":
                 return 0.0
         return CONNECTED_ROOKS_BONUS
     return 0.0
